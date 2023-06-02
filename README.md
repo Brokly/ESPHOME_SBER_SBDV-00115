@@ -41,10 +41,16 @@
 После этих операций вы можете прошить свою конфигурацию по UART или OTA, естественно, создав конфигурацию с использованием EspHome-LibreTiny. Обратите внимание, что в конфигурацию следует добавит следующие настройки:
 
 esphome:
+
   platformio_options:
+  
     board_build.bkcrypt_coeffs: 79bffed7a3fbeafd5dd3abffdfbfff5b
+    
     board_build.bkota.key: BDB4CE110F4787C2F539BF50E30A14E0
+    
     board_build.bkota.iv: 46DE464946314329
+    
     board_flash.download: "0x132000+0x9E000"
+    
 
 Хочу отметить, что тут я не описываю разборку лампы, снятие модуля CB2L c платы лампы, распайку модуля для перепрошивки и прочие нюансы работы с модулями Tuya. 
