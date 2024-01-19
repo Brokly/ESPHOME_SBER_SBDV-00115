@@ -1,0 +1,176 @@
+esphome:
+  name: $devicename
+  on_boot:
+    then:
+       - script.execute: script_show_text
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_pass
+  manual_ip:
+    static_ip: ${wifi_ip}
+    gateway: !secret gateway 
+    subnet: !secret subnet
+    dns1: !secret dns1
+    dns2: !secret dns2
+
+  ap:
+    ssid:  ${upper_devicename} HS
+    password: !secret ap_wifi_pass
+
+logger:
+    #level: VERBOSE
+    #level: NONE
+    baud_rate: 0
+    #level: DEBUG
+    level: ERROR
+    logs:
+      text_sensor: NONE # текстовые сенсоры не нужно логировать
+      #light: NONE
+      #sensor: NONE
+      #switch: NONE
+
+debug:
+  update_interval: 30s
+      
+api:
+
+#mqtt:
+#  broker: <Broker IP>
+#  discovery: True
+
+ota:
+  password: !secret ota_pass
+
+captive_portal:
+    
+web_server:
+  port: 80
+  local: true
+  auth:
+    username: !secret web_user
+    password: !secret web_pass
+
+binary_sensor:
+#статус подключения устройства
+  - platform: status
+    name: ${upper_devicename} HA Connected
+
+switch:
+#свитч рестарта устройства
+  - platform: restart
+    name: ${upper_devicename} Restart SW
+    id: restart_sw
+#виртуальный переключатель, для скрытия длинного текста
+  - platform: template
+    name: $upper_devicename Hide Notes
+    optimistic: true
+    id: hide_notes
+    entity_category: config
+    icon: 'mdi:eye-off'
+    turn_on_action:
+      - script.execute: script_hide_text
+    turn_off_action:
+      - script.execute: script_show_text
+
+sensor:
+#датчик отображающий уровень сигнала Wifi
+  - platform: wifi_signal
+    name: $upper_devicename Signal
+#время работы устройства после загрузки
+  - platform: uptime
+    name: ${upper_devicename} Uptime Sensor
+
+text_sensor:
+#версия прошивки
+  - platform: version
+    name: $upper_devicename ESPHome Version
+    disabled_by_default: true
+#текстовая форма uptime    
+  - platform: template
+    name: ${upper_devicename} Uptime
+    id: str_uptime
+    entity_category: diagnostic
+    icon: 'mdi:timer'
+    lambda: |-
+      uint32_t dur=millis()/1000;
+      char buffer[19];
+      if(dur>=86400) sprintf(buffer,"%ud %uh %02um %02us", dur/86400, dur%86400/3600, dur%3600/60, dur%60);
+      else if(dur>=3600) sprintf(buffer,"%uh %02um %02us", dur/3600, dur%3600/60, dur%60);
+      else sprintf(buffer,"%um %02us", dur/60, dur%60);
+      return {buffer};
+    update_interval: 60s
+    disabled_by_default: true
+#локализация устройства    
+  - platform: template
+    name: ${upper_devicename} Location
+    id: location
+    entity_category: diagnostic
+    icon: 'mdi:map-marker-radius'
+    update_interval: 60000s
+    disabled_by_default: true
+#железо устройства (на основе чего сделано)
+  - platform: template
+    name: ${upper_devicename} Hardware
+    id: hardware
+    entity_category: diagnostic
+    icon: 'mdi:saw-blade'
+    update_interval: 60000s
+    disabled_by_default: true
+#параметры окружения Wifi
+  - platform: wifi_info
+    ssid:
+      name: ${upper_devicename} Connected SSID
+      disabled_by_default: true
+    bssid:
+      name: ${upper_devicename} Connected BSSID 
+      disabled_by_default: true
+    ip_address:
+      name: ${upper_devicename} IP Address
+      disabled_by_default: true
+    mac_address:
+      name: ${upper_devicename} Mac Address
+      disabled_by_default: true
+    scan_results:
+      name:  ${upper_devicename} Scan Results
+      disabled_by_default: true
+#причины перезагрузки
+  - platform: debug
+    device:
+      name: ${upper_devicename} Device Info  
+      disabled_by_default: true
+    reset_reason:
+      name: ${upper_devicename} Reset Reason  
+      disabled_by_default: true
+#свободная память      
+  - platform: template
+    name: ${upper_devicename} Free Mem Size
+    entity_category: diagnostic
+    disabled_by_default: true
+    lambda: |-
+      #ifdef MALLOC_CAP_DEFAULT
+         size_t freeValue = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+      #else
+         size_t freeValue = ESP.getFreeHeap();
+      #endif
+      char buffer[10];
+      if(freeValue>=1024) sprintf(buffer,"%uKb", freeValue/1024);
+      else sprintf(buffer,"%ub", freeValue);
+      return {buffer};
+
+script:
+# процедура публикации большых текстовых кусков, сворачиваем для работы в веб морде
+  - id: script_show_text
+    then:
+     -  lambda: |-
+          id(location).publish_state("${location}");
+          id(hardware).publish_state("${hardware}");
+# процедура публикации большых текстовых кусков, сворачиваем для работы в веб морде
+  - id: script_hide_text
+    then:
+     -  lambda: |-
+          char buffer[]="Turn 'Hide Notes'";
+          id(location).publish_state(buffer);
+          id(hardware).publish_state(buffer);
+
+      

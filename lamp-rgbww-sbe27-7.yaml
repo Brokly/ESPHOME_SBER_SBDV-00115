@@ -1,0 +1,11 @@
+substitutions:
+  devicename: lamp-rgbww-sbe27-7
+  upper_devicename: Lamp Sber RGBWW E27 Pos7
+  location: Лампа, большая комната, правая, в люстре (место 2).
+  hardware: Лампа RGBWW Sber SBDV-00115 (LiberTiny), 9 ватт
+  wifi_ip: !secret ip_sber_rgbww_7
+  no_termosensor: 'false' # термосенсор установлен
+  time_scan_termosensor: 15s # 4294967295ms # период его сканирования
+  temperature_offset: '0.0'
+
+<<: !include _lamp_rgbww_cb-00115_e27_pattern.yaml

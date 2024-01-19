@@ -1,0 +1,161 @@
+# Шаблон сберовской лампы E27 9 ватт
+# ВНИАНИЕ ЛИБРЕТУЯ
+
+packages:
+  device_base: !include __device_base_tuya.yaml
+
+globals:
+  - id: fast_boot
+    type: int
+    restore_value: yes
+    initial_value: '0'
+
+esphome:
+  name: $devicename
+  platformio_options: # ключи шифрования SBER
+    board_build.bkcrypt_coeffs: 79bffed7a3fbeafd5dd3abffdfbfff5b #510fb093a3cbeadc5993a17ec7adeb03
+    board_build.bkota.key: BDB4CE110F4787C2F539BF50E30A14E0 #0123456789ABCDEF0123456789ABCDEF
+    board_build.bkota.iv: 46DE464946314329 #0123456789ABCDEF
+    board_flash.download: "0x132000+0x9E000"
+  project:
+    name: "Sber-00115_E27.LibreTiny"
+    version: "CB2L"
+  comment: "Sber E27 SBDV-00115"
+  on_boot:
+    then:
+       - script.execute: fast_boot_script
+       - lambda: |-
+          id(alert_id).publish_state(false);
+          id(rgbww_light)->loop();
+
+libretiny:
+  board: cb2l
+  framework:
+    version: dev
+
+external_components:
+  - source:
+      type: local
+      path: my_components
+
+preferences:
+  flash_write_interval: 1min
+
+bp5758d:
+  data_pin: P8
+  clock_pin: P7
+  
+dallas:
+#нога 1-wire 
+  - pin: P6
+    update_interval: $time_scan_termosensor
+
+output:
+  - platform: bp5758d
+    id: output_red #27mA
+    channel: 3
+    current: 10
+  - platform: bp5758d
+    id: output_green #27mA
+    channel: 2
+    current: 10
+  - platform: bp5758d
+    id: output_blue #27mA
+    channel: 1
+    current: 10
+  - platform: bp5758d
+    id: output_cold_white #40mA
+    channel: 5
+    current: 28
+  - platform: bp5758d 
+    id: output_warm_white #40mA
+    channel: 4
+    current: 28
+    #max_power: 0.794
+    #min_power: 0.001
+
+light:
+  - platform: rgbww
+    name:  ${upper_devicename}
+    restore_mode: RESTORE_DEFAULT_ON
+    id: rgbww_light
+    red: output_red
+    green: output_green
+    blue: output_blue
+    cold_white: output_cold_white
+    warm_white: output_warm_white
+    cold_white_color_temperature: 6500 K
+    warm_white_color_temperature: 2700 K
+    color_interlock: true
+    constant_brightness: true
+    gamma_correct: false
+    on_state:
+      - lambda: |-
+         if(id(alert_id).state){
+            float red; float green; float blue; float warm_white; float cold_white;
+            id(rgbww_light)->remote_values.as_rgbww(&red, &green, &blue, &cold_white, &warm_white); // получить целевой цвет и целевые яркости
+            if(warm_white!=0.0 || cold_white!=0.0 || red!=0.0 || green!=0.0 || blue!=0.0){
+               id(alert_id).publish_state(false);
+            }
+         }
+
+binary_sensor:
+# индикатор перегрева
+  - platform: template
+    device_class: safety
+    icon: mdi:chart-timeline-variant 
+    name: $upper_devicename Overheat  
+    id: alert_id
+    internal: ${no_termosensor}
+
+sensor:
+# датчик DALLAS для контроля нагрева
+  - platform: dallas
+    index: 0
+    id: temperature
+    internal: ${no_termosensor}
+    name: $upper_devicename Temperature
+    filters:  
+      -  offset: ${temperature_offset}    
+    # при излишнем нагреве - отключить реле, поднять флаг защиты
+    on_value_range:
+      - above: 105.0
+        then:
+        - lambda: |- 
+             // отключаем свет
+             auto call = id(rgbww_light).turn_off();
+             call.perform();
+             id(alert_id).publish_state(true);
+             ESP_LOGE("$devicename","Alarm! Overheat %f°С.", x);
+
+script:
+  - id: fast_boot_script
+    then:
+      - if:
+          condition:
+            lambda: return ( id(fast_boot) >= 15 );
+          then:
+            - lambda: |-
+                ESP_LOGD("$devicename", "Now the counter is greater than or equal to 15, perform reset device and reboot");
+                id(fast_boot) = 0;
+                fast_boot->loop();
+                global_preferences->sync();
+                auto call = id(rgbww_light).turn_on();
+                call.set_transition_length(1000);
+                call.set_brightness(0.5);
+                call.set_color_mode(ColorMode::RGB);
+                call.set_rgb(0.3, 0.3, 0.3);
+                call.perform();
+            - delay: 5s
+            - switch.turn_on: restart_sw
+      - lambda: |-
+          id(fast_boot) += 1;
+          fast_boot->loop();
+          global_preferences->sync();
+          ESP_LOGD("$devicename", "Now the counter is %d.  Reset the device when the counter is greater than or equal to 15", id(fast_boot));
+      - delay: 10s
+      - lambda: |-
+          ESP_LOGD("$devicename", "Reset counter");
+          id(fast_boot) = 0;
+          fast_boot->loop();
+          global_preferences->sync();            
